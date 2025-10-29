@@ -33,7 +33,7 @@
     <div id="timer">Time left: 60s</div>
     <div id="score">Score: 0</div>
     <div id="bestScore">Best Score: --</div>
-    <canvas id="canvas" width="350" height="250"></canvas>
+    nvas id="canvas" width="350" heightght="250"></canvas>
     <div>
       <button id="btnRestart" onclick="restartGame()">Restart</button>
     </div>
@@ -50,18 +50,27 @@
   let spawnRate = 1400, bubbleLife = 1800;
   let level = 1;
   let timeLeft = 60;
+  let bubbleTimeouts = [];
   document.getElementById('bestScore').textContent = 'Best Score: ' + (bestScore || '--');
   canvas.addEventListener('mousedown', popper, false);
   canvas.addEventListener('touchstart', popper, false);
 
+  function clearBubbleTimeouts() {
+    bubbleTimeouts.forEach(id => clearTimeout(id));
+    bubbleTimeouts = [];
+  }
+
   function startGame() {
+    clearInterval(intervalId);
+    clearInterval(timerId);
+    clearBubbleTimeouts();
+    bubbles = [];
+    tempMsg = "";
     score = 0;
     level = 1;
     timeLeft = 60;
     spawnRate = 1400;
     bubbleLife = 1800;
-    bubbles = [];
-    tempMsg = "";
     document.getElementById('score').textContent = 'Score: 0';
     document.getElementById('timer').textContent = `Time left: ${timeLeft}s`;
     document.getElementById('gameOver').style.display = 'none';
@@ -72,8 +81,6 @@
   }
 
   function restartGame() {
-    clearInterval(intervalId);
-    clearInterval(timerId);
     startGame();
   }
 
@@ -81,6 +88,7 @@
     playing = false;
     clearInterval(intervalId);
     clearInterval(timerId);
+    clearBubbleTimeouts();
     ctx.clearRect(0,0,canvas.width,canvas.height);
     document.getElementById('gameOver').style.display = 'block';
     document.getElementById('gameOver').textContent =
@@ -98,19 +106,20 @@
     const size = 28 + Math.random()*28;
     const x = size + Math.random()*(canvas.width-size*2);
     const y = size + Math.random()*(canvas.height-size*2);
-    const isBad = Math.random() < 0.18; // 18% are bad bubbles
+    const isBad = Math.random() < 0.18;
     const color = isBad 
       ? "black" 
       : `hsl(${Math.floor(Math.random()*360)},78%,55%)`;
     const bubble = {x, y, size, color, isBad, born: Date.now()};
     bubbles.push(bubble);
 
-    setTimeout(()=>{
+    let bubbleTimeout = setTimeout(()=>{
       if(bubbles.includes(bubble) && playing) {
         bubbles = bubbles.filter(b=>b!==bubble);
         endGame();
       }
     }, bubbleLife);
+    bubbleTimeouts.push(bubbleTimeout);
   }
 
   function popper(e) {
@@ -125,7 +134,7 @@
       const b = bubbles[i];
       if(Math.hypot(x-b.x, y-b.y) < b.size/2) {
         if(b.isBad) {
-          score = Math.max(0, score-2); // subtract 2 (no negative)
+          score = Math.max(0, score-2);
           showTempMessage("-2! Bad Bubble!", "#c00");
         } else {
           score++;
@@ -170,7 +179,6 @@
     if(playing) requestAnimationFrame(drawBubbles);
   }
 
-  // Show alert if bad bubble is clicked
   let tempMsg = ""; let tempColor = "#c00"; let tempMsgTimer;
   function showTempMessage(msg, color="#c00"){
     tempMsg = msg; tempColor = color;
@@ -189,7 +197,6 @@
     }
   }
 
-  // Timer countdown
   function countDown() {
     if(!playing) return;
     timeLeft--;
@@ -199,7 +206,6 @@
     }
   }
 
-  // Start first game
   startGame();
 </script>
 </body>
