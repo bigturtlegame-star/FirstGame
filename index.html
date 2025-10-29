@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Bubble Popper Game</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body {background:#f2faff; font-family:sans-serif; margin:0; text-align:center;}
+    #gameWrapper {margin:auto; max-width:390px;}
+    #canvas {background:#fff; border:2px solid #6ac9ee; border-radius:10px; display:block; margin:auto;}
+    #score, #bestScore, #instructions {font-size:1.2em; margin:16px 0 6px 0;}
+    #btnRestart {padding:10px 24px; font-size:1em; background:#23a6d5; color:#fff; border:none; border-radius:5px; margin-top:10px;}
+    #btnRestart:active {background:#177ebf;}
+    .bubble {pointer-events:none;}
+    @media(max-width:400px){ #canvas{width:97vw; height:65vw;} }
+  </style>
+</head>
+<body>
+  <div id="gameWrapper">
+    <h2>Bubble Popper</h2>
+    <div id="instructions">
+      <ul style="text-align:left; max-width:340px; margin:auto;">
+        <li>Tap/click bubbles before they disappear.</li>
+        <li>Each pop scores a point!</li>
+        <li>Game speeds up as you score more.</li>
+        <li>Bubbles vanish faster at higher levels!</li>
+        <li>Can you beat your best score?</li>
+      </ul>
+    </div>
+    <div id="score">Score: 0</div>
+    <div id="bestScore">Best Score: --</div>
+    <canvas id="canvas" width="350" height="250"></canvas>
+    <div>
+      <button id="btnRestart" onclick="restartGame()">Restart</button>
+    </div>
+    <div id="gameOver" style="font-size:1.2em; color:#c33; margin-top:16px; display:none;"></div>
+  </div>
+<script>
+ const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+let bubbles = [];
+let playing = false;
+let score = 0;
+let bestScore = localStorage.getItem('bubbleBest') || 0;
+let intervalId;
+let spawnRate = 1400, bubbleLife = 1800;
+let level = 1;
+let message = "";
+
+document.getElementById('bestScore').textContent = 'Best Score: ' + (bestScore || '--');
+canvas.addEventListener('mousedown', popper, false);
+canvas.addEventListener('touchstart', popper, false);
+
+function startGame() {
+  score = 0;
+  level = 1;
+  spawnRate = 1400;
+  bubbleLife = 1800;
+  bubbles = [];
+  message = "";
+  document.getElementById('score').textContent = 'Score: 0';
+  document.getElementById('gameOver').style.display = 'none';
+  playing = true;
+  intervalId = setInterval(spawnBubble, spawnRate);
+  requestAnimationFrame(drawBubbles);
+}
+
+function restartGame() {
+  clearInterval(intervalId);
+  startGame();
+}
+
+function endGame() {
+  playing = false;
+  clearInterval(intervalId);
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  document.getElementById('gameOver').style.display = 'block';
+  document.getElementById('gameOver').textContent = `Game Over! Final Score: ${score}`;
+  if(score > bestScore){
+    bestScore = score;
+    localStorage.setItem('bubbleBest', score);
+    document.getElementById('bestScore').textContent = 'Best Score: ' + bestScore;
+    document.getElementById('gameOver').textContent += " (New Best!)";
+  }
+}
+
+function spawnBubble() {
+  const size = 28 + Math.random()*28;
+  const x = size + Math.random()*(canvas.width-size*2);
+  const y = size + Math.random()*(canvas.height-size*2);
+  const isBad = Math.random() < 0.18; // 18% chance to spawn bad bubble
+  const color = isBad 
+    ? "black"
+    : `hsl(${Math.floor(Math.random()*360)},78%,55%)`;
+  const bubble = {x, y, size, color, isBad, born: Date.now()};
+  bubbles.push(bubble);
+
+  setTimeout(()=>{
+    if(bubbles.includes(bubble) && playing) {
+      bubbles = bubbles.filter(b=>b!==bubble);
+      endGame();
+    }
+  }, bubbleLife);
+}
+
+function popper(e) {
+  if(!playing) return;
+  const rect = canvas.getBoundingClientRect();
+  const ex = (e.touches ? e.touches[0].clientX : e.clientX);
+  const ey = (e.touches ? e.touches[0].clientY : e.clientY);
+  const x = ex - rect.left;
+  const y = ey - rect.top;
+
+  for(let i=bubbles.length-1; i>=0; i--) {
+    const b = bubbles[i];
+    if(Math.hypot(x-b.x, y-b.y) < b.size/2) {
+      if(b.isBad) {
+        score = Math.max(0, score-2); // subtract 2, no negative scores
+        showTempMessage("-2! Bad Bubble!", "#c00");
+      } else {
+        score++;
+        showTempMessage("");
+      }
+      document.getElementById('score').textContent = 'Score: ' + score;
+      bubbles.splice(i,1);
+      if(score%8===0 && score>0) {
+        level++;
+        spawnRate = Math.max(450, spawnRate-140);
+        bubbleLife = Math.max(550, bubbleLife-120);
+        clearInterval(intervalId);
+        intervalId = setInterval(spawnBubble, spawnRate);
+      }
+      return;
+    }
+  }
+}
+
+function drawBubbles() {
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  bubbles.forEach(b=>{
+    let life = 1-(Date.now()-b.born)/bubbleLife;
+    ctx.globalAlpha = Math.max(0.2, life);
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, b.size/2, 0, Math.PI*2);
+    ctx.fillStyle = b.color;
+    ctx.fill();
+    if(b.isBad) {
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = "#fd3232";
+      ctx.stroke();
+      ctx.font = `${Math.floor(b.size/2)}px sans-serif`;
+      ctx.fillStyle = "#fff";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("X", b.x, b.y);
+    }
+    ctx.globalAlpha = 1.0;
+  });
+  renderMessage();
+  if(playing) requestAnimationFrame(drawBubbles);
+}
+
+// Show alert if bad bubble is clicked
+let tempMsg = ""; let tempColor = "#c00"; let tempMsgTimer;
+function showTempMessage(msg, color="#c00"){
+  tempMsg = msg; tempColor = color;
+  clearTimeout(tempMsgTimer);
+  if(msg)
+    tempMsgTimer = setTimeout(()=>{ tempMsg=""; }, 800);
+}
+function renderMessage(){
+  if(tempMsg){
+    ctx.save();
+    ctx.font = "20px sans-serif";
+    ctx.fillStyle = tempColor;
+    ctx.textAlign = "center";
+    ctx.fillText(tempMsg, canvas.width/2, 34);
+    ctx.restore();
+  }
+}
+
+// Start first game
+startGame();
+
+</script>
+</body>
+</html>
