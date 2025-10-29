@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Magnet/Gravity Orbs</title>
+  <style>
+    canvas { background: #f0f0f0; margin: 40px auto; display: block; }
+    #instructions { text-align: center; margin-top: 20px; font-family: sans-serif; }
+  </style>
+</head>
+<body>
+<div id="instructions">
+  <h2>Magnet/Gravity Orbs</h2>
+  <p>Drag balls with mouse. Red/purple repel, blue/cyan attract. Guide all to their goals!</p>
+</div>
+<canvas id="game" width="600" height="500"></canvas>
+<script>
+  // ----- All game JS from previous answer -----
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+
+  let balls = [
+    {x: 100, y: 100, vx: 0, vy: 0, radius: 18, polarity: 1, color: 'red', goal: {x: 500, y: 100}, inGoal: false},
+    {x: 200, y: 300, vx: 0, vy: 0, radius: 18, polarity: -1, color: 'blue', goal: {x: 500, y: 300}, inGoal: false},
+    {x: 100, y: 400, vx: 0, vy: 0, radius: 18, polarity: 1, color: 'purple', goal: {x: 500, y: 400}, inGoal: false},
+    {x: 200, y: 200, vx: 0, vy: 0, radius: 18, polarity: -1, color: 'cyan', goal: {x: 500, y: 200}, inGoal: false},
+  ];
+
+  function drawBall(ball) {
+    ctx.beginPath();
+    ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+    ctx.fillStyle = ball.color;
+    ctx.fill();
+    ctx.closePath();
+  }
+
+  function drawGoal(ball) {
+    ctx.beginPath();
+    ctx.arc(ball.goal.x, ball.goal.y, ball.radius, 0, Math.PI * 2);
+    ctx.strokeStyle = ball.color;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.closePath();
+  }
+
+  function applyMagnetism(ball, others) {
+    others.forEach(other => {
+      if (ball === other) return;
+      let dx = other.x - ball.x;
+      let dy = other.y - ball.y;
+      let dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < 1) return;
+
+      let forceDir = (ball.polarity * other.polarity < 0) ? 1 : -1;
+      let force = forceDir * 30 / (dist * dist);
+
+      ball.vx += force * dx / dist;
+      ball.vy += force * dy / dist;
+    });
+  }
+
+  const gravity = 0.15;
+  let dragging = null;
+
+  canvas.addEventListener('mousedown', function(e) {
+    let rect = canvas.getBoundingClientRect();
+    let mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    balls.forEach(ball => {
+      let dist = Math.sqrt((mx-ball.x)**2 + (my-ball.y)**2);
+      if (dist < ball.radius) dragging = ball;
+    });
+  });
+  canvas.addEventListener('mousemove', function(e) {
+    if(dragging) {
+      let rect = canvas.getBoundingClientRect();
+      dragging.x = e.clientX - rect.left;
+      dragging.y = e.clientY - rect.top;
+      dragging.vx = 0; dragging.vy = 0;
+    }
+  });
+  canvas.addEventListener('mouseup', function() {
+    dragging = null;
+  });
+
+  function update() {
+    balls.forEach(ball => {
+      if (!ball.inGoal) {
+        applyMagnetism(ball, balls);
+
+        ball.vy += gravity;
+        ball.x += ball.vx;
+        ball.y += ball.vy;
+        ball.vx *= 0.97; ball.vy *= 0.97;
+        if (ball.x - ball.radius < 0) { ball.x = ball.radius; ball.vx *= -0.5; }
+        if (ball.x + ball.radius > canvas.width) { ball.x = canvas.width - ball.radius; ball.vx *= -0.5; }
+        if (ball.y - ball.radius < 0) { ball.y = ball.radius; ball.vy *= -0.5; }
+        if (ball.y + ball.radius > canvas.height) { ball.y = canvas.height - ball.radius; ball.vy *= -0.5; }
+      }
+
+      let dx = ball.goal.x - ball.x;
+      let dy = ball.goal.y - ball.y;
+      if (Math.sqrt(dx*dx + dy*dy) < ball.radius + 6) {
+        ball.inGoal = true;
+        ball.x = ball.goal.x;
+        ball.y = ball.goal.y;
+        ball.vx = 0; ball.vy = 0;
+      }
+    });
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    balls.forEach(drawGoal);
+    balls.forEach(drawBall);
+  }
+
+  function checkWin() {
+    return balls.every(ball => ball.inGoal);
+  }
+
+  function gameLoop() {
+    update();
+    draw();
+    if (checkWin()) {
+      ctx.font = "44px sans-serif";
+      ctx.fillStyle = "#286";
+      ctx.fillText("You Win!", 220, 250);
+      return;
+    }
+    requestAnimationFrame(gameLoop);
+  }
+
+  gameLoop();
+</script>
+</body>
+</html>
