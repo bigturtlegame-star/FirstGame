@@ -235,26 +235,27 @@ function analyze() {
     expBreakdown.push({name:names[i], amount:amtYear});
   }
 
-  // Main negative calculation and messaging
-  let savingsActual = salaryYear - totExpYear;
-  let savingsDisplay = Math.min(saveYear, savingsActual); // If savings goal higher than possible, only the actual is shown as bar
-  let savingsIsNegative = (savingsDisplay < 0);
-  let rem = salaryYear - Math.max(savingsDisplay,0) - totExpYear;
-  let remDisplay = rem; // Will be negative if too much savings is attempted
+  // Enforce actual savings at most (salary - expenses)
+  let maxPossibleSavings = salaryYear - totExpYear;
+  let savingsDisplay = Math.min(saveYear, maxPossibleSavings);
+  let savingsIsNegative = (maxPossibleSavings < 0);
+  let rem = salaryYear - savingsDisplay - totExpYear;
 
   let savePerc=(saveYear/salaryYear)*100;
   let results=`<b>Annualized Salary:</b> ${salaryYear.toLocaleString()}<br>`;
   results+=`<b>Savings Goal:</b> ${saveYear.toLocaleString()} (${savePerc.toFixed(1)}%)<br>`;
   results+=`<b>Total Annual Expenses:</b> ${totExpYear.toLocaleString()} (${(totExpYear/salaryYear*100).toFixed(1)}%)<br>`;
-  if (savingsIsNegative) {
-    results+=`<b style='color:#d12020'>Savings is NOT possible: shortfall of ${(Math.abs(savingsDisplay)).toLocaleString()}</b><br>`;
+  if (maxPossibleSavings < 0) {
+    results+=`<b style='color:#d12020'>ERROR: Your expenses exceed your salary. No savings possible!</b><br>`;
+  } else if (saveYear > maxPossibleSavings) {
+    results+=`<b style='color:#d12020'>Savings goal too high; actual possible saving is ${maxPossibleSavings.toLocaleString()}.</b><br>`;
   } else {
     results+=`<b>Actual Saving Possible:</b> ${savingsDisplay.toLocaleString()}<br>`;
   }
-  if (remDisplay < 0) {
-    results+=`<b style='color:#d12020'>Negative Remaining: ${remDisplay.toLocaleString()} - you are budgeting for more than you earn!</b><br><br>`;
+  if (rem < 0) {
+    results+=`<b style='color:#d12020'>Negative Remaining: ${rem.toLocaleString()} - you are budgeting more than you earn!</b><br><br>`;
   } else {
-    results+=`<b>Remaining for Discretionary/Other:</b> ${remDisplay.toLocaleString()}<br><br>`;
+    results+=`<b>Remaining for Discretionary/Other:</b> ${rem.toLocaleString()}<br><br>`;
   }
 
   let sorted=expBreakdown.slice().sort((a,b)=>b.amount-a.amount);
@@ -285,15 +286,15 @@ function analyze() {
   }
   document.getElementById('results').innerHTML=results;
 
-  // Pie Chart: negative savings or remaining displayed as positive, but colored red
+  // PIE
   let pieLabels = sortedNames.concat('Savings','Remaining');
-  let pieData = sortedAmounts.concat(savingsDisplay < 0 ? 0 : savingsDisplay, remDisplay < 0 ? Math.abs(remDisplay) : remDisplay);
+  let pieData = sortedAmounts.concat(savingsIsNegative ? 0 : savingsDisplay, rem < 0 ? Math.abs(rem): rem);
   let pieColors=[];
   for(let i=0;i<sortedAmounts.length;i++){
     let perc=sortedAmounts[i]/sortedTotal;
     pieColors.push(getExpenseColor(i,perc));
   }
-  pieColors = pieColors.concat(savingsDisplay < 0 ? '#e84141' : '#33a958', remDisplay < 0 ? '#e84141' : '#cccccc');
+  pieColors = pieColors.concat(savingsIsNegative ? '#e84141' : '#33a958', rem < 0 ? '#e84141' : '#cccccc');
 
   if(pieChart) pieChart.destroy();
   pieChart = new Chart(document.getElementById('pieChart').getContext('2d'), {
@@ -308,16 +309,16 @@ function analyze() {
     }
   });
 
-  // Bar Chart: negative savings/remaining go down/red
+  // BAR
   let barLabels = pieLabels.slice();
-  let barData = sortedAmounts.concat(savingsDisplay, remDisplay);
+  let barData = sortedAmounts.concat(savingsIsNegative ? maxPossibleSavings : savingsDisplay, rem);
   let barColors = [];
   for(let i=0;i<sortedAmounts.length;i++){
     let perc=sortedAmounts[i]/sortedTotal;
     barColors.push(getExpenseColor(i,perc));
   }
-  barColors.push(savingsDisplay < 0 ? '#e84141' : '#33a958');
-  barColors.push(remDisplay < 0 ? '#e84141' : '#cccccc');
+  barColors.push(savingsIsNegative ? '#e84141' : '#33a958');
+  barColors.push(rem < 0 ? '#e84141' : '#cccccc');
   if(barChart) barChart.destroy();
   barChart = new Chart(document.getElementById('barChart').getContext('2d'), {
     type:'bar',
