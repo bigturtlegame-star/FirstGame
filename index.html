@@ -3,6 +3,8 @@
 <head>
   <title>Salary & Expenses Analyzer</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body {
@@ -63,7 +65,7 @@
   <h2>Salary & Expenses Analyzer</h2>
   <div class="flex-wrap">
     <div class="formcol">
-      <form id="salaryForm" onsubmit="return false;">
+      <form id="salaryForm">
         <label>
           Salary Amount:
           <input type="number" id="salaryAmount" value="1200" min="1" oninput="salaryValidate()">
@@ -155,13 +157,25 @@
           </div>
           <button type="button" onclick="addExpense()">Add Expense</button>
         </label>
+        <label>
+          Expense Breakdown Frequency:
+          <select id="expenseViewFreq">
+            <option value="daily">Daily</option>
+            <option value="weekly" selected>Weekly</option>
+            <option value="monthly">Monthly</option>
+            <option value="yearly">Yearly</option>
+          </select>
+        </label>
         <button type="button" id="calcBtn">Calculate & Analyze</button>
       </form>
       <div class="results" id="results"></div>
+      <button type="button" id="exportBtn" style="margin-top:10px;">Export PDF</button>
     </div>
     <div class="charts">
       <canvas id="pieChart"></canvas>
       <canvas id="barChart"></canvas>
+      <canvas id="expenseBreakChart"></canvas>
+      <canvas id="curveFlowChart"></canvas>
     </div>
   </div>
 <script>
@@ -172,6 +186,12 @@ function freqToYearly(amount, freq) {
   return amount*1;
 }
 function addExpense() {
+  const maxExpenses = 12;
+  const currentExpenses = document.querySelectorAll('#expenseList > div').length;
+  if (currentExpenses >= maxExpenses) {
+    alert("You can only add up to 12 expenses.");
+    return;
+  }
   let el=document.createElement('div');
   el.innerHTML=
   `<div style="margin-bottom:5px;">
@@ -187,6 +207,7 @@ function addExpense() {
   </div>`;
   document.getElementById('expenseList').appendChild(el);
 }
+
 function getExpenseColor(i, amountPerc) {
   const base=[
     '#175cab','#d73333','#2ca958','#ddc81d','#6e2eb3','#f68c20',
@@ -205,15 +226,16 @@ function adjustColor(hex, amt){
   r=Math.round(r+(230-r)*factor);g=Math.round(g+(230-g)*factor);b=Math.round(b+(230-b)*factor);
   return `rgb(${r},${g},${b})`;
 }
-let pieChart, barChart;
+let pieChart, barChart, expenseBreakChart, curveFlowChart;
 function analyze() {
   let salary=+document.getElementById('salaryAmount').value;
 
-  // Salary cannot be zero or negative—the warning disables button. But also check here:
   if (!salary || salary<=0 || isNaN(salary)) {
     document.getElementById('results').innerHTML = "<b style='color:#d12020'>Salary must be > 0 to analyze.</b>";
     if(pieChart) pieChart.destroy();
     if(barChart) barChart.destroy();
+    if(expenseBreakChart) expenseBreakChart.destroy();
+    if(curveFlowChart) curveFlowChart.destroy();
     return;
   }
   let sfreq=document.getElementById('salaryFreq').value;
@@ -235,7 +257,6 @@ function analyze() {
     expBreakdown.push({name:names[i], amount:amtYear});
   }
 
-  // Enforce actual savings at most (salary - expenses)
   let maxPossibleSavings = salaryYear - totExpYear;
   let savingsDisplay = Math.min(saveYear, maxPossibleSavings);
   let savingsIsNegative = (maxPossibleSavings < 0);
@@ -269,8 +290,8 @@ function analyze() {
   });
   results+="</ul>";
 
+  // --- Correction block starts here ---
   if (maxPossibleSavings < 0) {
-    // Expenses exceed income: show only the expenses warning and suggestions
     let suggest='',cum=rem;
     for(let i=0;i<sorted.length;i++){
       cum+=sorted[i].amount;
@@ -278,13 +299,21 @@ function analyze() {
       if(cum>0) break;
     }
     results+=`<hr><b>EXPENSES ABOVE YOUR INCOME!<br>For more savings (or any saving), you must cut these costs:</b><ul>${suggest}</ul>`;
-  } else {
+  } else if (saveYear <= maxPossibleSavings && saveYear > 0) {
     results+=`<hr><b>Saving meets goal!<br>For more savings, reduce:</b><ul>`;
     sorted.forEach(e=>{
       results+=`<li>${e.name} (${e.amount.toLocaleString()} / ${(e.amount/salaryYear*100).toFixed(1)}%)</li>`;
     });
     results+="</ul>";
+  } else {
+    results+=`<hr><b>Your savings goal is not met.<br>To reach your desired savings, reduce:</b><ul>`;
+    sorted.forEach(e=>{
+      results+=`<li>${e.name} (${e.amount.toLocaleString()} / ${(e.amount/salaryYear*100).toFixed(1)}%)</li>`;
+    });
+    results+="</ul>";
   }
+  // --- Correction block ends here ---
+
   document.getElementById('results').innerHTML=results;
 
   // PIE
@@ -321,27 +350,140 @@ function analyze() {
   barColors.push(savingsIsNegative ? '#e84141' : '#33a958');
   barColors.push(rem < 0 ? '#e84141' : '#cccccc');
   if(barChart) barChart.destroy();
-barChart = new Chart(document.getElementById('barChart').getContext('2d'), {
-  type:'bar',
-  data:{labels:barLabels, datasets:[{label:'Annual Amount', data:barData, backgroundColor:barColors}]},
-  options:{
-    maintainAspectRatio:true,
-    plugins:{title:{display:true, text:"Annual Salary/Expense Breakdown"}},
-    scales:{
-      y:{
-        beginAtZero:true,
-        title:{display:true,text:'Annual Amount'}
-      },
-      x:{
-        grid: {
-          borderColor: '#000',
-          borderWidth: 4
+  barChart = new Chart(document.getElementById('barChart').getContext('2d'), {
+    type:'bar',
+    data:{labels:barLabels, datasets:[{label:'Annual Amount', data:barData, backgroundColor:barColors}]},
+    options:{
+      maintainAspectRatio:true,
+      plugins:{title:{display:true, text:"Annual Salary/Expense Breakdown"}},
+      scales:{
+        y:{
+          beginAtZero:true,
+          title:{display:true,text:'Annual Amount'}
+        },
+        x:{
+          grid: {
+            borderColor: '#000',
+            borderWidth: 4
+          }
         }
       }
     }
-  }
-});
+  });
 
+  // Expense breakdown by chosen frequency
+  const expenseViewFreq = document.getElementById('expenseViewFreq').value;
+  function toSelectedFreq(amount, fromFreq, toFreq) {
+    let dailyAmount;
+    if (fromFreq === 'daily') dailyAmount = amount;
+    else if (fromFreq === 'weekly') dailyAmount = amount / 7;
+    else if (fromFreq === 'monthly') dailyAmount = amount / 30.4375;
+    else dailyAmount = amount / 365;
+    if (toFreq === 'daily') return dailyAmount;
+    else if (toFreq === 'weekly') return dailyAmount * 7;
+    else if (toFreq === 'monthly') return dailyAmount * 30.4375;
+    else return dailyAmount * 365;
+  }
+  const convertedAmounts = amts.map((a,i) => toSelectedFreq(a, freqs[i], expenseViewFreq));
+  const freqChartLabel = {
+    daily: "Expense Breakdown Per Day",
+    weekly: "Expense Breakdown Per Week",
+    monthly: "Expense Breakdown Per Month",
+    yearly: "Expense Breakdown Per Year"
+  }[expenseViewFreq];
+
+  if (expenseBreakChart) expenseBreakChart.destroy();
+  expenseBreakChart = new Chart(document.getElementById('expenseBreakChart').getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: names,
+      datasets: [{
+        label: freqChartLabel,
+        data: convertedAmounts,
+        backgroundColor: names.map((n,i) => getExpenseColor(i,1/names.length))
+      }]
+    },
+    options: {
+      plugins:{title:{display:true, text:freqChartLabel}},
+      scales:{
+        y:{
+          beginAtZero:true,
+          title:{display:true, text:freqChartLabel}
+        },
+        x:{
+          grid:{
+            borderColor: '#000',
+            borderWidth: 4
+          }
+        }
+      }
+    }
+  });
+
+  // Curve graph for cumulative savings & expenses
+  const curvePeriods = 12;
+  const periodDays = {daily: 1, weekly: 7, monthly: 30.4375, yearly: 365}[expenseViewFreq];
+  const salaryPerPeriod = freqToYearly(salary, sfreq) / (365 / periodDays);
+  const savingsPerPeriod = freqToYearly(save, savefreq) / (365 / periodDays);
+  let expensesPerPeriod = 0;
+  for(let i=0; i<amts.length; i++) {
+    expensesPerPeriod += freqToYearly(amts[i], freqs[i]) / (365 / periodDays);
+  }
+  let savingsPoints=[], expensePoints=[], labels=[];
+  let cumulativeSavings=0, cumulativeExpenses=0;
+  for(let i=1; i<=curvePeriods; i++) {
+    cumulativeExpenses += expensesPerPeriod;
+    cumulativeSavings += Math.max(0, salaryPerPeriod - expensesPerPeriod);
+    labels.push(expenseViewFreq.charAt(0).toUpperCase()+expenseViewFreq.slice(1) + " " + i);
+    expensePoints.push(Math.round(cumulativeExpenses));
+    savingsPoints.push(Math.round(cumulativeSavings));
+  }
+  if (curveFlowChart) curveFlowChart.destroy();
+  curveFlowChart = new Chart(document.getElementById('curveFlowChart').getContext('2d'), {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: "Cumulative Savings",
+          data: savingsPoints,
+          borderColor: "#33a958",
+          fill: false,
+          tension: 0.4,
+          pointRadius: 3
+        },
+        {
+          label: "Cumulative Expenses",
+          data: expensePoints,
+          borderColor: "#d73333",
+          fill: false,
+          tension: 0.4,
+          pointRadius: 3
+        }
+      ]
+    },
+    options: {
+      plugins: {
+        title: {
+          display: true,
+          text: `Cumulative Savings & Expenses Flow (${expenseViewFreq})`
+        },
+        legend:{display:true}
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          title: { display: true, text: "Amount" }
+        },
+        x:{
+          grid:{
+            borderColor: '#000',
+            borderWidth: 3
+          }
+        }
+      }
+    }
+  });
 }
 function salaryValidate() {
   let val=+document.getElementById('salaryAmount').value;
@@ -359,7 +501,48 @@ function salaryValidate() {
 }
 document.getElementById('calcBtn').addEventListener('click', analyze);
 document.getElementById('salaryAmount').addEventListener('input', salaryValidate);
+document.getElementById('expenseViewFreq').addEventListener('change', analyze);
 window.onload=function(){ salaryValidate(); analyze(); };
+
+document.getElementById('exportBtn').addEventListener('click', function() {
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF({orientation:'p',unit:'pt',format:'a4'});
+  pdf.setFontSize(20);
+  pdf.text("Salary & Expenses Analyzer", pdf.internal.pageSize.getWidth()/2, 40, {align: 'center'});
+
+  const resultsNode = document.getElementById('results');
+  const pieNode = document.getElementById('pieChart');
+  const barNode = document.getElementById('barChart');
+  const expenseBreakNode = document.getElementById('expenseBreakChart');
+  const curveNode = document.getElementById('curveFlowChart');
+  html2canvas(resultsNode).then(function(canvasResults){
+    const imgResults = canvasResults.toDataURL('image/png');
+    let y = 60;
+    pdf.addImage(imgResults, 'PNG', 40, y, 515, 0);
+    y += canvasResults.height + 20;
+
+    const imgPie = pieNode.toDataURL('image/png', 1.0);
+    pdf.text("Annualized Salary Allocation (%)", pdf.internal.pageSize.getWidth()/2, y + 20, {align: 'center',});
+    pdf.addImage(imgPie, 'PNG', 115, y+40, 320, 200);
+    y += 270;
+
+    const imgBar = barNode.toDataURL('image/png', 1.0);
+    pdf.text("Annual Salary/Expense Breakdown", pdf.internal.pageSize.getWidth()/2, y + 20, {align: 'center',});
+    pdf.addImage(imgBar, 'PNG', 115, y+40, 320, 200);
+    y += 270;
+
+    const imgExpBreak = expenseBreakNode.toDataURL('image/png', 1.0);
+    pdf.text(document.getElementById('expenseViewFreq').selectedOptions[0].text + " Expense Breakdown", pdf.internal.pageSize.getWidth()/2, y + 20, {align: 'center',});
+    pdf.addImage(imgExpBreak, 'PNG', 115, y+40, 320, 200);
+    y += 270;
+
+    const imgCurve = curveNode.toDataURL('image/png', 1.0);
+    pdf.text(`Cumulative Savings & Expenses Flow (${document.getElementById('expenseViewFreq').value})`, pdf.internal.pageSize.getWidth()/2, y + 20, {align: 'center',});
+    pdf.addImage(imgCurve, 'PNG', 115, y+40, 320, 200);
+
+    pdf.save('salary-expense-analysis.pdf');
+  });
+});
 </script>
 </body>
 </html>
