@@ -269,15 +269,16 @@ function analyze() {
   });
   results+="</ul>";
 
-  if(rem<0){
+  if (maxPossibleSavings < 0) {
+    // Expenses exceed income: show only the expenses warning and suggestions
     let suggest='',cum=rem;
     for(let i=0;i<sorted.length;i++){
       cum+=sorted[i].amount;
       suggest+=`<li>Reduce <b>${sorted[i].name}</b> (${sorted[i].amount.toLocaleString()} / ${((sorted[i].amount/salaryYear)*100).toFixed(1)}%)</li>`;
       if(cum>0) break;
     }
-    results+=`<hr><b>EXPENSES ABOVE YOUR INCOME!<br>Cut these costs, in priority order:</b><ul>${suggest}</ul>`;
-  }else{
+    results+=`<hr><b>EXPENSES ABOVE YOUR INCOME!<br>For more savings (or any saving), you must cut these costs:</b><ul>${suggest}</ul>`;
+  } else {
     results+=`<hr><b>Saving meets goal!<br>For more savings, reduce:</b><ul>`;
     sorted.forEach(e=>{
       results+=`<li>${e.name} (${e.amount.toLocaleString()} / ${(e.amount/salaryYear*100).toFixed(1)}%)</li>`;
@@ -320,20 +321,27 @@ function analyze() {
   barColors.push(savingsIsNegative ? '#e84141' : '#33a958');
   barColors.push(rem < 0 ? '#e84141' : '#cccccc');
   if(barChart) barChart.destroy();
-  barChart = new Chart(document.getElementById('barChart').getContext('2d'), {
-    type:'bar',
-    data:{labels:barLabels, datasets:[{label:'Annual Amount', data:barData, backgroundColor:barColors}]},
-    options:{
-      maintainAspectRatio:true,
-      plugins:{title:{display:true, text:"Annual Salary/Expense Breakdown"}},
-      scales:{
-        y:{
-          beginAtZero:true,
-          title:{display:true,text:'Annual Amount'}
+barChart = new Chart(document.getElementById('barChart').getContext('2d'), {
+  type:'bar',
+  data:{labels:barLabels, datasets:[{label:'Annual Amount', data:barData, backgroundColor:barColors}]},
+  options:{
+    maintainAspectRatio:true,
+    plugins:{title:{display:true, text:"Annual Salary/Expense Breakdown"}},
+    scales:{
+      y:{
+        beginAtZero:true,
+        title:{display:true,text:'Annual Amount'}
+      },
+      x:{
+        grid: {
+          borderColor: '#000',
+          borderWidth: 4
         }
       }
     }
-  });
+  }
+});
+
 }
 function salaryValidate() {
   let val=+document.getElementById('salaryAmount').value;
